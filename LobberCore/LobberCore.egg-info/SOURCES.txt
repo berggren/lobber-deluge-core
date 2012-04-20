@@ -1,0 +1,16 @@
+setup.py
+LobberCore.egg-info/PKG-INFO
+LobberCore.egg-info/SOURCES.txt
+LobberCore.egg-info/dependency_links.txt
+LobberCore.egg-info/entry_points.txt
+LobberCore.egg-info/namespace_packages.txt
+LobberCore.egg-info/top_level.txt
+deluge/__init__.py
+deluge/plugins/__init__.py
+deluge/plugins/lobbercore/__init__.py
+deluge/plugins/lobbercore/common.py
+deluge/plugins/lobbercore/core.py
+deluge/plugins/lobbercore/gtkui.py
+deluge/plugins/lobbercore/proxy.py
+deluge/plugins/lobbercore/twisted_web_proxy.py
+deluge/plugins/lobbercore/webui.py
