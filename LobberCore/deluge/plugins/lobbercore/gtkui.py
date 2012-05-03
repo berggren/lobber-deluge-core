@@ -66,13 +66,14 @@ class GtkUI(GtkPluginBase):
     def on_apply_prefs(self):
         log.debug("applying prefs for LobberCore")
         config = {
-            "test":self.glade.get_widget("txt_test").get_text()
+            "lobber_key": self.glade.get_widget("txt_lobber_key").get_text(),
         }
         client.lobbercore.set_config(config)
+        #client.lobbercore.update()
 
     def on_show_prefs(self):
         client.lobbercore.get_config().addCallback(self.cb_get_config)
 
     def cb_get_config(self, config):
         "callback for on show_prefs"
-        self.glade.get_widget("txt_test").set_text(config["test"])
+        self.glade.get_widget("txt_lobber_key").set_text(config["lobber_key"])
