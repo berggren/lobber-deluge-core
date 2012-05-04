@@ -41,9 +41,10 @@
 import gtk
 import logging
 
-from deluge.ui.client import client
+from deluge.ui.client import client, DelugeRPCError
 from deluge.plugins.pluginbase import GtkPluginBase
 import deluge.component as component
+
 import deluge.common
 
 from common import get_resource
@@ -65,11 +66,12 @@ class GtkUI(GtkPluginBase):
 
     def on_apply_prefs(self):
         log.debug("applying prefs for LobberCore")
+        log.info(self.glade.get_widget("txt_lobber_key").get_text())
         config = {
             "lobber_key": self.glade.get_widget("txt_lobber_key").get_text(),
         }
         client.lobbercore.set_config(config)
-        #client.lobbercore.update()
+        client.lobbercore.reload().addErrback(self.log_error)
 
     def on_show_prefs(self):
         client.lobbercore.get_config().addCallback(self.cb_get_config)
@@ -77,3 +79,7 @@ class GtkUI(GtkPluginBase):
     def cb_get_config(self, config):
         "callback for on show_prefs"
         self.glade.get_widget("txt_lobber_key").set_text(config["lobber_key"])
+
+    def log_error(self, failure):
+        failure.trap(DelugeRPCError)
+        log.error(failure.getErrorMessage())
