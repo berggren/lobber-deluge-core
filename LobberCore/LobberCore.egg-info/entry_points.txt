@@ -1,8 +1,0 @@
-
-    [deluge.plugin.core]
-    LobberCore = deluge.plugins.lobbercore:CorePlugin
-    [deluge.plugin.gtkui]
-    LobberCore = deluge.plugins.lobbercore:GtkUIPlugin
-    [deluge.plugin.web]
-    LobberCore = deluge.plugins.lobbercore:WebUIPlugin
-    
