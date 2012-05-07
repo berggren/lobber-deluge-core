@@ -54,7 +54,6 @@ class Core(CorePluginBase):
         pass
 
     def start_proxy(self):
-        log.debug('start_proxy starting')
         parse_result = urlparse(self.config['tracker_host'])
         tracker_port = parse_result.port
         if parse_result.scheme == 'https':
@@ -80,12 +79,12 @@ class Core(CorePluginBase):
         return reactor.listenTCP(bindto_port, proxy, interface=bindto_host)
 
     def process_json(self, j):
-        log.debug('process_json starting')
         try:
             result = json.loads(j)
         except ValueError:
             log.error('Expected JSON, got:\n%s' % j)
             return
+        log.debug('Processing JSON data:\n%s' % json.dumps(result, indent=4))
         torrent_list = component.get("TorrentManager").get_torrent_list()
         for torrent in result:
             if not torrent['info_hash'] in torrent_list:
@@ -93,8 +92,8 @@ class Core(CorePluginBase):
                 component.get("Core").add_torrent_url(url, {}, headers=None)
                 log.info("Added: %s" % torrent['label'])
             else:
+                log.debug('Torrent with hash %s already added.' % torrent['info_hash'])
                 pass
-        log.debug('process_json ended')
 
     def fetch_json_error(self, failure):
         failure.trap(Error, TypeError)
@@ -107,10 +106,10 @@ class Core(CorePluginBase):
         self.port = self.start_proxy()
             
     def fetch_json(self):
-        log.debug('fetch_json starting')
         parse_result = urlparse(self.config['feed_url'])
         # Ensure that url does not contain unicode.
         url = str('http://127.0.0.1:%s%s' % (self.config['proxy_port'], parse_result.path))
+        log.debug('Fetching JSON data from %s.' % url)
         r = client.getPage(
             url,
             method='GET',
@@ -121,7 +120,6 @@ class Core(CorePluginBase):
         r.addCallback(self.process_json)
         r.addErrback(self.fetch_json_error)
         r.addErrback(self.proxy_error)
-        log.debug('fetch_json ended')
         return r
 
     @export
