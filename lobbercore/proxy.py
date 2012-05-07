@@ -10,7 +10,6 @@ from urllib import quote as urlquote
 from twisted.internet import reactor, ssl
 from twisted.web.resource import Resource
 from twisted.web.server import NOT_DONE_YET
-#from twisted.web.proxy import ProxyClientFactory
 from twisted_web_proxy import ProxyClientFactory
 
 class ReverseProxyTLSResource(Resource):

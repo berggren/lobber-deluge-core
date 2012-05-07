@@ -3,16 +3,16 @@ from deluge.plugins.pluginbase import CorePluginBase
 import deluge.component as component
 import deluge.configmanager
 from deluge.core.rpcserver import export
+from twisted.web import server, client
 from twisted.internet.task import LoopingCall
+from twisted.internet import task, reactor
 from twisted.internet.error import ConnectError, CannotListenError, ConnectionRefusedError
-from twisted.web import client
 from twisted.web.error import Error
 import json
 from urlparse import urlparse
 from urllib import splitnport
-from twisted.web import server
-from proxy import ReverseProxyTLSResource
-from twisted.internet import task, reactor
+
+from lobbercore.proxy import ReverseProxyTLSResource
 
 DEFAULT_PREFS = {
     'feed_url': 'https://dev.lobber.se/torrent/all.json',
@@ -26,16 +26,10 @@ log = logging.getLogger(__name__)
 
 class Core(CorePluginBase):
     def enable(self):
-        self.load_config()
+        self.config = deluge.configmanager.ConfigManager("lobbercore.conf", DEFAULT_PREFS)
         self.start_plugin()
 
-
     def disable(self):
-        self.config['feed_url'] = self.feed_url
-        self.config['lobber_key'] = self.lobber_key
-        self.config['proxy_port'] = self.proxy_port
-        self.config['tracker_host'] = self.tracker_host
-        self.config.save()
         self.stop_plugin()
 
     def start_plugin(self):
@@ -44,8 +38,7 @@ class Core(CorePluginBase):
         except CannotListenError:
             pass
         self.fetch_json_timer = LoopingCall(self.fetch_json)
-        self.fetch_json_timer.start(self.minutes_delay*60)
-        self.fetch_json_timer.start(self.minutes_delay*60)
+        self.fetch_json_timer.start(self.config['minutes_delay']*60)
         log.info("Lobber plugin started")
 
     def stop_plugin(self):
@@ -57,20 +50,12 @@ class Core(CorePluginBase):
         self.port.stopListening()
         log.info("Lobber plugin stopped")
 
-    def load_config(self):
-        self.config = deluge.configmanager.ConfigManager("lobbercore.conf", DEFAULT_PREFS)
-        self.feed_url = self.config['feed_url']
-        self.lobber_key = self.config['lobber_key']
-        self.proxy_port = self.config['proxy_port']
-        self.tracker_host = self.config['tracker_host']
-        self.minutes_delay = self.config['minutes_delay']
-
     def update(self):
         pass
 
     def start_proxy(self):
         log.debug('start_proxy starting')
-        parse_result = urlparse(self.tracker_host)
+        parse_result = urlparse(self.config['tracker_host'])
         tracker_port = parse_result.port
         if parse_result.scheme == 'https':
             tls = True
@@ -89,9 +74,9 @@ class Core(CorePluginBase):
                 path_rewrite=[['/tracker/announce$', '/tracker/uannounce']],
 		        tls=tls,
                 # str() as header can't contain unicode.
-		        headers={'X_LOBBER_KEY': str(self.lobber_key), 'User-Agent': 'Lobber Storage Node/2.0'}))
+		        headers={'X_LOBBER_KEY': str(self.config['lobber_key']), 'User-Agent': 'Lobber Storage Node/2.0'}))
         bindto_host = '127.0.0.1'
-        bindto_port = int(self.proxy_port)
+        bindto_port = int(self.config['proxy_port'])
         log.info("Lobber proxy started")
         return reactor.listenTCP(bindto_port, proxy, interface=bindto_host)
 
@@ -101,7 +86,7 @@ class Core(CorePluginBase):
         torrent_list = component.get("TorrentManager").get_torrent_list()
         for torrent in result:
             if not torrent['info_hash'] in torrent_list:
-                url = 'http://127.0.0.1:%s/torrent/%s.torrent' % (self.proxy_port, torrent['id'])
+                url = 'http://127.0.0.1:%s/torrent/%s.torrent' % (self.config['proxy_port'], torrent['id'])
                 component.get("Core").add_torrent_url(url, {}, headers=None)
                 log.info("Added: %s" % torrent['label'])
             else:
@@ -120,15 +105,15 @@ class Core(CorePluginBase):
             
     def fetch_json(self):
         log.debug('fetch_json starting')
-        parse_result = urlparse(self.feed_url)
+        parse_result = urlparse(self.config['feed_url'])
         # str() as url can't contain unicode.
-        url = str('http://127.0.0.1:%s%s' % (self.proxy_port, parse_result.path))
+        url = str('http://127.0.0.1:%s%s' % (self.config['proxy_port'], parse_result.path))
         r = client.getPage(
             url,
             method='GET',
             postdata=None,
             agent='Lobber Storage Node/2.0',
-            headers={'X_LOBBER_KEY': str(self.lobber_key)}) # str() as header can't contain unicode.
+            headers={'X_LOBBER_KEY': str(self.config['lobber_key'])}) # str() as header can't contain unicode.
         r.addCallback(self.process_json)
         r.addErrback(self.fetch_json_error)
         r.addErrback(self.proxy_error)
@@ -149,6 +134,5 @@ class Core(CorePluginBase):
 
     @export
     def reload(self):
-        self.load_config()
         self.stop_plugin()
         self.start_plugin()

@@ -41,5 +41,5 @@
 
 def get_resource(filename):
     import pkg_resources, os
-    return pkg_resources.resource_filename("deluge.plugins.lobbercore",
+    return pkg_resources.resource_filename("lobbercore",
                                            os.path.join("data", filename))

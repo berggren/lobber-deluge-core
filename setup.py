@@ -46,9 +46,13 @@ __author_email__ = "jbn@nordu.net"
 __version__ = "0.1"
 __url__ = ""
 __license__ = "GPLv3"
-__description__ = "Lobber storagenode"
-__long_description__ = """"""
-__pkg_data__ = {"deluge.plugins."+__plugin_name__.lower(): ["template/*", "data/*"]}
+__description__ = "Automatic downloader and core functionality plugin for use with Lobber."
+__long_description__ = """
+LobberCore provides an auto downloader of Lobber torrents that are readable with your API key. The
+LobberCore plugin also provides a local proxy for secure authentication that other plugins can use when
+working with Lobber torrents.
+"""
+__pkg_data__ = {__plugin_name__.lower(): ["template/*", "data/*"]}
 
 setup(
     name=__plugin_name__,
@@ -61,15 +65,14 @@ setup(
     long_description=__long_description__ if __long_description__ else __description__,
 
     packages=find_packages(),
-    namespace_packages = ["deluge", "deluge.plugins"],
     package_data = __pkg_data__,
 
     entry_points="""
     [deluge.plugin.core]
-    %(plugin_name)s = deluge.plugins.%(plugin_module)s:CorePlugin
+    %(plugin_name)s = %(plugin_module)s:CorePlugin
     [deluge.plugin.gtkui]
-    %(plugin_name)s = deluge.plugins.%(plugin_module)s:GtkUIPlugin
+    %(plugin_name)s = %(plugin_module)s:GtkUIPlugin
     [deluge.plugin.web]
-    %(plugin_name)s = deluge.plugins.%(plugin_module)s:WebUIPlugin
+    %(plugin_name)s = %(plugin_module)s:WebUIPlugin
     """ % dict(plugin_name=__plugin_name__, plugin_module=__plugin_name__.lower())
 )
