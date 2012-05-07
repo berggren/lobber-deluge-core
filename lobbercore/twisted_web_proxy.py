@@ -54,7 +54,8 @@ class ProxyClient(HTTPClient):
     def connectionMade(self):
         self.sendCommand(self.command, self.rest)
         for header, value in self.headers.items():
-            self.sendHeader(header, value)
+            # Ensure that headers does not contain unicode.
+            self.sendHeader(str(header), str(value))
         self.endHeaders()
         self.transport.write(self.data)
 

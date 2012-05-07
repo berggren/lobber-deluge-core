@@ -73,8 +73,7 @@ class Core(CorePluginBase):
 		        '',
                 path_rewrite=[['/tracker/announce$', '/tracker/uannounce']],
 		        tls=tls,
-                # str() as header can't contain unicode.
-		        headers={'X_LOBBER_KEY': str(self.config['lobber_key']), 'User-Agent': 'Lobber Storage Node/2.0'}))
+		        headers={'X_LOBBER_KEY': self.config['lobber_key'], 'User-Agent': 'Lobber Storage Node/2.0'}))
         bindto_host = '127.0.0.1'
         bindto_port = int(self.config['proxy_port'])
         log.info("Lobber proxy started")
@@ -82,7 +81,11 @@ class Core(CorePluginBase):
 
     def process_json(self, j):
         log.debug('process_json starting')
-        result = json.loads(j)
+        try:
+            result = json.loads(j)
+        except ValueError:
+            log.error('Expected JSON, got:\n%s' % j)
+            return
         torrent_list = component.get("TorrentManager").get_torrent_list()
         for torrent in result:
             if not torrent['info_hash'] in torrent_list:
@@ -94,7 +97,7 @@ class Core(CorePluginBase):
         log.debug('process_json ended')
 
     def fetch_json_error(self, failure):
-        failure.trap(Error)
+        failure.trap(Error, TypeError)
         log.error('LobberCore: Error in fetch_json.')
         log.error(failure.getErrorMessage())
 
@@ -106,14 +109,15 @@ class Core(CorePluginBase):
     def fetch_json(self):
         log.debug('fetch_json starting')
         parse_result = urlparse(self.config['feed_url'])
-        # str() as url can't contain unicode.
+        # Ensure that url does not contain unicode.
         url = str('http://127.0.0.1:%s%s' % (self.config['proxy_port'], parse_result.path))
         r = client.getPage(
             url,
             method='GET',
             postdata=None,
             agent='Lobber Storage Node/2.0',
-            headers={'X_LOBBER_KEY': str(self.config['lobber_key'])}) # str() as header can't contain unicode.
+            # Ensure that headers does not contain unicode.
+            headers={'X_LOBBER_KEY': str(self.config['lobber_key'])})
         r.addCallback(self.process_json)
         r.addErrback(self.fetch_json_error)
         r.addErrback(self.proxy_error)
