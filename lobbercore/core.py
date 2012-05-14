@@ -17,19 +17,37 @@ from lobbercore.proxy import ReverseProxyTLSResource
 DEFAULT_PREFS = {
     'feed_url': 'https://dev.lobber.se/torrent/all.json',
     'lobber_key': '',
-    'proxy_port': '7001',
+    'proxy_port': 7001,
     'tracker_host': 'https://dev.lobber.se',
-    'minutes_delay': 1
+    'minutes_delay': 1,
+    # If download_dir is left blank Deluge settings will be used.
+    'download_dir': '', # Ending slash important
+    'unique_path': False,
+    # Torrent monitoring options
+    'monitor_torrents': True,
+    'remove_data': False,
+    'torrent_evaluator': 'total_seeders',
+    'removed_torrents': [],
+    # total_seeders evaluator options
+    'min_seeders': 1,
+    'max_seeders': 2,
+
 }
 
 log = logging.getLogger(__name__)
 
 class Core(CorePluginBase):
+
     def enable(self):
+        component.get("AlertManager").register_handler("scrape_reply_alert", self.on_scrape_reply_alert)
         self.config = deluge.configmanager.ConfigManager("lobbercore.conf", DEFAULT_PREFS)
+        self.EVALUATORS = {
+            'total_seeders': self.total_seeders_evaluator,
+            }
         self.start_plugin()
 
     def disable(self):
+        component.get("AlertManager").deregister_handler("scrape_reply_alert")
         self.stop_plugin()
 
     def start_plugin(self):
@@ -39,6 +57,10 @@ class Core(CorePluginBase):
             pass
         self.fetch_json_timer = LoopingCall(self.fetch_json)
         self.fetch_json_timer.start(self.config['minutes_delay']*60)
+        if self.config['monitor_torrents']:
+            self.monitor_torrents_timer = LoopingCall(self.monitor_torrents)
+            self.monitor_torrents_timer.start(1*60)
+            log.info('Monitoring torrents.')
         log.info("Lobber plugin started")
 
     def stop_plugin(self):
@@ -46,6 +68,11 @@ class Core(CorePluginBase):
             self.fetch_json_timer.stop()
         except AssertionError:
             # Fetch loop not running
+            pass
+        try:
+            self.monitor_torrents_timer.stop()
+        except AssertionError:
+            # Montior loop not running
             pass
         self.port.stopListening()
         log.info("Lobber plugin stopped")
@@ -78,6 +105,19 @@ class Core(CorePluginBase):
         log.info("Lobber proxy started")
         return reactor.listenTCP(bindto_port, proxy, interface=bindto_host)
 
+    def get_torrent_options(self, unique_path=None):
+        """
+        Returns a dictionary with torrent options. If a unique path is supplied the storage
+        directory will be appended with it.
+        """
+        opts = {}
+        if self.config['download_dir']:
+            opts['download_location'] = self.config['download_dir']
+            if unique_path:
+                opts['download_location'] = '%s%s/' % (opts['download_location'], unique_path)
+            log.debug('download_location: %s' % opts['download_location'])
+        return opts
+
     def process_json(self, j):
         try:
             result = json.loads(j)
@@ -87,9 +127,13 @@ class Core(CorePluginBase):
         log.debug('Processing JSON data:\n%s' % json.dumps(result, indent=4))
         torrent_list = component.get("TorrentManager").get_torrent_list()
         for torrent in result:
-            if not torrent['info_hash'] in torrent_list:
+            if not torrent['info_hash'] in torrent_list and not torrent['info_hash'] in self.config['removed_torrents']:
                 url = 'http://127.0.0.1:%s/torrent/%s.torrent' % (self.config['proxy_port'], torrent['id'])
-                component.get("Core").add_torrent_url(url, {}, headers=None)
+                if self.config['unique_path']:
+                    torrent_options = self.get_torrent_options(unique_path=torrent['info_hash'])
+                else:
+                    torrent_options = self.get_torrent_options()
+                component.get("Core").add_torrent_url(url, torrent_options, headers=None)
                 log.info("Added: %s" % torrent['label'])
             else:
                 log.debug('Torrent with hash %s already added.' % torrent['info_hash'])
@@ -121,6 +165,78 @@ class Core(CorePluginBase):
         r.addErrback(self.fetch_json_error)
         r.addErrback(self.proxy_error)
         return r
+
+    def on_scrape_reply_alert(self, alert):
+        evaluate = self.EVALUATORS[self.config['torrent_evaluator']]
+        reply = {'total_seeds': alert.complete,
+                 'total_peers': alert.incomplete,
+                 'info_hash': str(alert.handle.info_hash()),
+        }
+        evaluate(reply, scrape_reply=True)
+
+    def monitor_torrents(self):
+        """
+        Loops over the list of torrents and resumes/pause/removes the torrent
+        depending on the evaluator used.
+
+        The evaluator should call monitor_torrent_execute_action with the torrent
+        and 'Resume', 'Pause', 'Remove' or None.
+        """
+        log.debug('Running monitor_torrents.')
+        evaluate = self.EVALUATORS[self.config['torrent_evaluator']]
+        torrent_list = component.get("TorrentManager").get_torrent_list()
+        for id in torrent_list:
+            evaluate(component.get("TorrentManager")[id])
+
+    def monitor_torrent_execute_action(self, torrent, action):
+        log.debug('Monitor torrent, ID: %s, Action: %s' % (torrent.torrent_id, action))
+        if action:
+            if action == 'Remove':
+                t_id = torrent.torrent_id
+                component.get("TorrentManager").remove(t_id, remove_data=self.config['remove_data'])
+                # Should removed torrents really be persistent between restarts?
+                self.config['removed_torrents'].append(t_id)
+                self.config.save()
+            elif action == 'Pause':
+                if not torrent.handle.is_paused():
+                    torrent.pause()
+            elif action == 'Resume':
+                if torrent.handle.is_paused():
+                    torrent.resume()
+
+    def total_seeders_evaluator(self, torrent, scrape_reply=False):
+        """
+        Pause if seeders => min_seeders,
+        Resume if seeders < min_seeders,
+        Remove if seeders >= max_seeders.
+        """
+        if scrape_reply:
+            status = torrent
+            torrent = component.get("TorrentManager")[torrent['info_hash']]
+        else:
+            status = torrent.get_status(['total_seeds', 'state', 'is_finished'])
+            if not status['is_finished']:
+                return None
+            if status['state'] == 'Paused':
+                # Check the tracker for up to date information before evaluating.
+                torrent.scrape_tracker()
+                return None
+        # All information gathered, evaluate torrent.
+        seeders = status['total_seeds']
+        if seeders >= self.config['max_seeders']:
+            log.debug('Evaluator seeders >= max_seeders')
+            action = 'Remove'
+        elif seeders >= self.config['min_seeders']:
+            log.debug('Evaluator seeders >= min_seeders')
+            action = 'Pause'
+        elif seeders < self.config['min_seeders']:
+            log.debug('Evaluator seeders < min_seeders')
+            action = 'Resume'
+        else:
+            log.debug('Evaluator seeders == min_seeders')
+            action = None
+        self.monitor_torrent_execute_action(torrent, action)
+
 
     @export
     def set_config(self, config):
