@@ -19,7 +19,7 @@ DEFAULT_PREFS = {
     'lobber_key': '',
     'proxy_port': 7001,
     'tracker_host': 'https://dev.lobber.se',
-    'minutes_delay': 1,
+    'minutes_delay': 15,
     # If download_dir is left blank Deluge settings will be used.
     'download_dir': '', # Ending slash important
     'unique_path': False,
@@ -52,7 +52,7 @@ class Core(CorePluginBase):
 
     def start_plugin(self):
         try:
-            self.port = self.start_proxy()
+            self.proxy = self.start_proxy()
         except CannotListenError:
             pass
         self.fetch_json_timer = LoopingCall(self.fetch_json)
@@ -74,7 +74,7 @@ class Core(CorePluginBase):
         except AssertionError:
             # Montior loop not running
             pass
-        self.port.stopListening()
+        self.proxy.stopListening()
         log.info("Lobber plugin stopped")
 
     def update(self):
@@ -147,7 +147,7 @@ class Core(CorePluginBase):
     def proxy_error(self, failure):
         failure.trap(ConnectionRefusedError)
         # Proxy not started, try to start it
-        self.port = self.start_proxy()
+        self.proxy = self.start_proxy()
             
     def fetch_json(self):
         parse_result = urlparse(self.config['feed_url'])
@@ -226,15 +226,15 @@ class Core(CorePluginBase):
         if seeders >= self.config['max_seeders']:
             log.debug('Evaluator seeders >= max_seeders')
             action = 'Remove'
-        elif seeders >= self.config['min_seeders']:
-            log.debug('Evaluator seeders >= min_seeders')
+        elif seeders > self.config['min_seeders']:
+            log.debug('Evaluator seeders > min_seeders')
             action = 'Pause'
-        elif seeders < self.config['min_seeders']:
-            log.debug('Evaluator seeders < min_seeders')
+        elif seeders <= self.config['min_seeders']:
+            log.debug('Evaluator seeders <= min_seeders')
             action = 'Resume'
         else:
-            log.debug('Evaluator seeders == min_seeders')
             action = None
+            log.error('Something strange is up with seeder count.')
         self.monitor_torrent_execute_action(torrent, action)
 
 
