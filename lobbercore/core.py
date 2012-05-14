@@ -59,7 +59,7 @@ class Core(CorePluginBase):
         self.fetch_json_timer.start(self.config['minutes_delay']*60)
         if self.config['monitor_torrents']:
             self.monitor_torrents_timer = LoopingCall(self.monitor_torrents)
-            self.monitor_torrents_timer.start(1*60)
+            self.monitor_torrents_timer.start(5*60)
             log.info('Monitoring torrents.')
         log.info("Lobber plugin started")
 
