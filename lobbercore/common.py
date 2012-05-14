@@ -38,7 +38,6 @@
 #    statement from all source files in the program, then also delete it here.
 #
 
-
 def get_resource(filename):
     import pkg_resources, os
     return pkg_resources.resource_filename("lobbercore",

@@ -4,8 +4,9 @@ import deluge.component as component
 import deluge.configmanager
 from deluge.core.rpcserver import export
 from twisted.web import server, client
+from twisted.internet import reactor
 from twisted.internet.task import LoopingCall
-from twisted.internet import task, reactor
+from twisted.application.internet import TCPClient
 from twisted.internet.error import ConnectError, CannotListenError, ConnectionRefusedError
 from twisted.web.error import Error
 import json
@@ -13,12 +14,15 @@ from urlparse import urlparse
 from urllib import splitnport
 
 from lobbercore.proxy import ReverseProxyTLSResource
+from lobbercore.stomp_client import StompClient
 
 DEFAULT_PREFS = {
     'feed_url': 'https://dev.lobber.se/torrent/all.json',
     'lobber_key': '',
     'proxy_port': 7001,
     'tracker_host': 'https://dev.lobber.se',
+    'stomp_host': 'stomp://dev.lobber.se',
+    'stomp_port': 61613,
     'minutes_delay': 1,
     # If download_dir is left blank Deluge settings will be used.
     'download_dir': '', # Ending slash important
@@ -52,11 +56,13 @@ class Core(CorePluginBase):
 
     def start_plugin(self):
         try:
-            self.port = self.start_proxy()
+            self.proxy = self.start_proxy()
         except CannotListenError:
             pass
         self.fetch_json_timer = LoopingCall(self.fetch_json)
         self.fetch_json_timer.start(self.config['minutes_delay']*60)
+        stomp_client = StompClient()
+        self.stomp_service = TCPClient(self.config['stomp_host'], self.config['stomp_port'], stomp_client)
         if self.config['monitor_torrents']:
             self.monitor_torrents_timer = LoopingCall(self.monitor_torrents)
             self.monitor_torrents_timer.start(1*60)
@@ -72,9 +78,10 @@ class Core(CorePluginBase):
         try:
             self.monitor_torrents_timer.stop()
         except AssertionError:
-            # Montior loop not running
+            # Monitor loop not running
             pass
-        self.port.stopListening()
+        self.stomp_service.looseConnection()
+        self.proxy.stopListening()
         log.info("Lobber plugin stopped")
 
     def update(self):
@@ -147,7 +154,7 @@ class Core(CorePluginBase):
     def proxy_error(self, failure):
         failure.trap(ConnectionRefusedError)
         # Proxy not started, try to start it
-        self.port = self.start_proxy()
+        self.proxy = self.start_proxy()
             
     def fetch_json(self):
         parse_result = urlparse(self.config['feed_url'])
