@@ -24,7 +24,7 @@ DEFAULT_PREFS = {
     'download_dir': '', # Ending slash important
     'unique_path': False,
     # Torrent monitoring options
-    'monitor_torrents': True,
+    'monitor_torrents': False,
     'remove_data': False,
     'torrent_evaluator': 'total_seeders',
     'removed_torrents': [],
