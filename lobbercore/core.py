@@ -41,6 +41,7 @@ class Core(CorePluginBase):
     def enable(self):
         component.get("AlertManager").register_handler("scrape_reply_alert", self.on_scrape_reply_alert)
         self.config = deluge.configmanager.ConfigManager("lobbercore.conf", DEFAULT_PREFS)
+        self.config.save() # Create the first config file
         self.EVALUATORS = {
             'total_seeders': self.total_seeders_evaluator,
             }
